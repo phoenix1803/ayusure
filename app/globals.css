@@ -126,6 +126,7 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
@@ -135,9 +136,11 @@
 .bg-brand {
   background-color: var(--brand-green);
 }
+
 .text-brand {
   color: var(--brand-green);
 }
+
 .border-brand {
   border-color: var(--brand-green);
 }
@@ -145,6 +148,7 @@
 .text-accent {
   color: var(--brand-saffron);
 }
+
 .bg-accent {
   background-color: var(--brand-saffron);
 }
@@ -152,9 +156,11 @@
 .bg-sand {
   background-color: var(--brand-sand);
 }
+
 .text-tech {
   color: var(--brand-blue);
 }
+
 .text-gold {
   color: var(--brand-gold);
 }
@@ -171,6 +177,7 @@
   background-color: var(--brand-green);
   color: white;
 }
+
 .btn-primary:hover {
   background-color: #075e0a;
 }
@@ -179,6 +186,7 @@
   background-color: var(--brand-blue);
   color: white;
 }
+
 .btn-secondary:hover {
   background-color: #162a6b;
 }
@@ -186,6 +194,38 @@
 .btn-outline {
   @apply border border-stone-300 text-gray-800 bg-white;
 }
+
 .btn-outline:hover {
   @apply border-stone-400;
+}
+
+/* Barcode Scanner Animations */
+@keyframes scan-line {
+  0% {
+    transform: translateY(-100%);
+  }
+
+  100% {
+    transform: translateY(100%);
+  }
+}
+
+.scan-line {
+  animation: scan-line 2s ease-in-out infinite;
+}
+
+@keyframes pulse-glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px var(--brand-green), 0 0 10px var(--brand-green), 0 0 15px var(--brand-green);
+  }
+
+  50% {
+    box-shadow: 0 0 10px var(--brand-green), 0 0 20px var(--brand-green), 0 0 30px var(--brand-green);
+  }
+}
+
+.glow-brand {
+  animation: pulse-glow 2s ease-in-out infinite;
 }

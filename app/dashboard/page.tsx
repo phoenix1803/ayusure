@@ -1,21 +1,30 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Upload } from "lucide-react"
+import { Upload, Scan } from "lucide-react"
+import { useRouter } from "next/navigation"
 import type { Sample } from "@/components/types"
 import SampleCard from "@/components/SampleCard"
+import BarcodeScanner from "@/components/BarcodeScanner"
 
 export default function DashboardPage() {
   const [samples, setSamples] = useState<Sample[]>([])
   const [loaded, setLoaded] = useState(false)
   const [q, setQ] = useState("")
   const [minAuth, setMinAuth] = useState<number | "">("")
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const router = useRouter()
 
   const fetchData = async () => {
     const res = await fetch("/sampleData.json", { cache: "no-store" })
     const data: Sample[] = await res.json()
     setSamples(data)
     setLoaded(true)
+  }
+
+  const handleScanSuccess = (sampleNo: string) => {
+    // Navigate directly to the sample details page
+    router.push(`/dashboard/${encodeURIComponent(sampleNo)}`)
   }
 
   useEffect(() => {
@@ -44,7 +53,15 @@ export default function DashboardPage() {
           <button onClick={fetchData} className="btn btn-primary">
             Fetch Data
           </button>
-          <button className="btn btn-secondary">
+          <button
+            onClick={() => setIsScannerOpen(true)}
+            className="btn btn-secondary relative overflow-hidden group"
+          >
+            <Scan className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+            Scan Sample
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700"></div>
+          </button>
+          <button className="btn btn-outline">
             <Upload className="h-4 w-4 mr-2" />
             Upload Manually
           </button>
@@ -82,6 +99,22 @@ export default function DashboardPage() {
           ))}
         </div>
       )}
+
+      {/* Floating Scan Button for Mobile */}
+      <button
+        onClick={() => setIsScannerOpen(true)}
+        className="fixed bottom-6 right-6 z-40 md:hidden bg-blue-600 text-white p-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-110 hover:bg-blue-700"
+        aria-label="Scan Sample Barcode"
+      >
+        <Scan className="h-6 w-6" />
+      </button>
+
+      {/* Barcode Scanner Modal */}
+      <BarcodeScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+      />
     </div>
   )
 }
