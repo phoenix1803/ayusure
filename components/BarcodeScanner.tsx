@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { X, Camera, CheckCircle, AlertCircle } from "lucide-react"
+import { BrowserMultiFormatReader } from '@zxing/browser'
 
 interface BarcodeScannerProps {
     isOpen: boolean
@@ -11,22 +12,19 @@ interface BarcodeScannerProps {
 
 export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: BarcodeScannerProps) {
     const videoRef = useRef<HTMLVideoElement>(null)
-    const canvasRef = useRef<HTMLCanvasElement>(null)
     const streamRef = useRef<MediaStream | null>(null)
-    const animationRef = useRef<number | null>(null)
+    const readerRef = useRef<BrowserMultiFormatReader | null>(null)
     const [isScanning, setIsScanning] = useState(false)
     const [error, setError] = useState("")
     const [scanResult, setScanResult] = useState("")
     const [cameraReady, setCameraReady] = useState(false)
-    const [isInitializing, setIsInitializing] = useState(false)
 
     useEffect(() => {
-        if (isOpen && !isInitializing) {
-            // Small delay to ensure DOM is ready
+        if (isOpen) {
             setTimeout(() => {
                 initCamera()
             }, 100)
-        } else if (!isOpen) {
+        } else {
             cleanup()
         }
 
@@ -34,21 +32,13 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
     }, [isOpen])
 
     const initCamera = async () => {
-        if (isInitializing) return
-
         try {
-            setIsInitializing(true)
             setError("")
             setCameraReady(false)
-
-            // Clean up any existing streams
             cleanup()
 
-            // Verify video element exists
             if (!videoRef.current) {
-                console.error("Video ref not available, waiting...")
                 await new Promise(resolve => setTimeout(resolve, 200))
-
                 if (!videoRef.current) {
                     throw new Error("Video element failed to mount")
                 }
@@ -56,24 +46,22 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
 
             console.log("Requesting camera access...")
 
-            // Request camera access
+            // Get camera stream
             let stream: MediaStream | null = null
 
             try {
-                // Try back camera first
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: "environment",
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 })
             } catch (e) {
                 console.log("Back camera failed, trying any camera:", e)
-                // Fallback to any camera
                 stream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
+                    video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
                     audio: false
                 })
             }
@@ -90,13 +78,11 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
                 throw new Error("Video element lost during initialization")
             }
 
-            // Attach stream to video
             video.srcObject = stream
 
-            // Wait for video to be ready
-            const waitForVideo = new Promise<void>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error("Video loading timeout - try refreshing the page"))
+                    reject(new Error("Video loading timeout"))
                 }, 8000)
 
                 const handleLoaded = async () => {
@@ -117,29 +103,24 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
                 }
             })
 
-            await waitForVideo
-
             setCameraReady(true)
             setIsScanning(true)
-            setIsInitializing(false)
-            startBarcodeDetection()
+
+            // Start ZXing scanner
+            console.log("Starting ZXing barcode scanner...")
+            startZXingScanner()
 
         } catch (err) {
             console.error("Camera initialization error:", err)
-            setIsInitializing(false)
 
             let errorMessage = "Unable to access camera"
             if (err instanceof Error) {
                 if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-                    errorMessage = "Camera permission denied. Please allow camera access and refresh."
-                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                    errorMessage = "Camera permission denied. Please allow camera access."
+                } else if (err.name === "NotFoundError") {
                     errorMessage = "No camera found on this device."
-                } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-                    errorMessage = "Camera is in use by another app. Please close other camera apps."
-                } else if (err.message.includes("timeout")) {
-                    errorMessage = "Camera took too long to start. Please refresh and try again."
-                } else if (err.message.includes("Video element")) {
-                    errorMessage = "Camera interface failed to load. Please refresh the page."
+                } else if (err.name === "NotReadableError") {
+                    errorMessage = "Camera is in use by another app."
                 } else {
                     errorMessage = err.message
                 }
@@ -150,108 +131,57 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
         }
     }
 
-    const startBarcodeDetection = () => {
-        if ('BarcodeDetector' in window) {
-            detectBarcodesNative()
-        } else {
-            console.log("Native BarcodeDetector not available, using fallback")
-            startFallbackDetection()
-        }
-    }
-
-    const startFallbackDetection = () => {
-        // Fallback: simulate barcode detection after 3-5 seconds for demo
-        const simulateDetection = () => {
-            if (!isScanning) return
-
-            const delay = Math.random() * 2000 + 3000 // 3-5 seconds
-            setTimeout(() => {
-                if (isScanning) {
-                    const sampleNumbers = ["AYU-009", "AYU-010", "AYU-011", "AYU-012", "AYU-013", "AYU-014"]
-                    const randomSample = sampleNumbers[Math.floor(Math.random() * sampleNumbers.length)]
-
-                    console.log("Simulated barcode detection:", randomSample)
-                    setScanResult(`Found: ${randomSample}`)
-
-                    setTimeout(() => {
-                        onScanSuccess(randomSample)
-                        handleClose()
-                    }, 800)
-                }
-            }, delay)
-        }
-
-        simulateDetection()
-    }
-
-    const detectBarcodesNative = async () => {
+    const startZXingScanner = async () => {
         try {
-            const barcodeDetector = new (window as any).BarcodeDetector({
-                formats: ['code_128', 'code_39', 'code_93', 'ean_13', 'ean_8', 'qr_code', 'upc_a', 'upc_e']
-            })
+            const codeReader = new BrowserMultiFormatReader()
+            readerRef.current = codeReader
 
-            const scan = async () => {
-                if (!videoRef.current || !canvasRef.current || !isScanning) return
+            console.log("ZXing reader initialized, starting continuous scan...")
 
-                const video = videoRef.current
-                const canvas = canvasRef.current
-                const ctx = canvas.getContext('2d')
+            // Continuous decode from video element
+            await codeReader.decodeFromVideoElement(
+                videoRef.current!,
+                (result, error) => {
+                    if (result) {
+                        const scannedValue = result.getText()
+                        console.log("✅ BARCODE DETECTED:", scannedValue)
+                        console.log("Format:", result.getBarcodeFormat())
 
-                if (!ctx || video.readyState < 2) {
-                    animationRef.current = requestAnimationFrame(scan)
-                    return
-                }
+                        // Stop scanning immediately
+                        setIsScanning(false)
+                        setScanResult(`Found: ${scannedValue}`)
 
-                canvas.width = video.videoWidth
-                canvas.height = video.videoHeight
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-                try {
-                    const barcodes = await barcodeDetector.detect(canvas)
-                    if (barcodes.length > 0) {
-                        const barcode = barcodes[0]
-                        const scannedValue = barcode.rawValue
-                        console.log("Barcode detected:", scannedValue)
-
-                        // Check if it matches AYU sample format or map to demo sample
-                        let sampleNo = scannedValue
-                        if (!scannedValue.match(/^AYU-\d{3}$/)) {
-                            // For demo purposes, map any barcode to a random sample
-                            const sampleNumbers = ["AYU-009", "AYU-010", "AYU-011", "AYU-012", "AYU-013", "AYU-014"]
-                            sampleNo = sampleNumbers[Math.floor(Math.random() * sampleNumbers.length)]
-                            console.log("Mapped barcode to sample:", sampleNo)
-                        }
-
-                        setScanResult(`Found: ${sampleNo}`)
-
-                        // Navigate to sample details
+                        // Success callback
                         setTimeout(() => {
-                            onScanSuccess(sampleNo)
+                            onScanSuccess(scannedValue)
                             handleClose()
-                        }, 800) // Slightly longer delay to show success state
-                        return
+                        }, 800)
                     }
-                } catch (e) {
-                    console.error("Detection error:", e)
+
+                    if (error) {
+                        // Ignore common "not found" errors during scanning
+                        if (!error.message?.includes('No MultiFormat Readers')) {
+                            console.error("Scan error:", error)
+                        }
+                    }
                 }
+            )
 
-                animationRef.current = requestAnimationFrame(scan)
-            }
-
-            scan()
-        } catch (e) {
-            console.error("BarcodeDetector error:", e)
+        } catch (err) {
+            console.error("ZXing scanner error:", err)
+            setError("Failed to initialize barcode scanner")
         }
     }
 
     const cleanup = () => {
         console.log("Cleaning up camera...")
 
-        if (animationRef.current) {
-            cancelAnimationFrame(animationRef.current)
-            animationRef.current = null
+        // Clear ZXing reader
+        if (readerRef.current) {
+            readerRef.current = null
         }
 
+        // Stop camera stream
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(track => {
                 track.stop()
@@ -279,8 +209,6 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
     return (
         <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
             <div className="relative w-full h-full max-w-2xl mx-auto">
-                <canvas ref={canvasRef} className="hidden" />
-
                 {/* Header */}
                 <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent p-4">
                     <div className="flex items-center justify-between max-w-md mx-auto">
@@ -299,7 +227,6 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
 
                 {/* Camera Area */}
                 <div className="relative w-full h-full flex items-center justify-center">
-                    {/* Always render video element */}
                     <video
                         ref={videoRef}
                         className={`w-full h-full object-cover ${cameraReady ? 'block' : 'hidden'}`}
@@ -348,7 +275,6 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
                                                 <CheckCircle className="h-16 w-16 text-green-500 drop-shadow-lg" />
                                             </div>
                                         )}
-                                        {/* Corner brackets */}
                                         <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white"></div>
                                         <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white"></div>
                                         <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white"></div>
@@ -364,7 +290,7 @@ export default function BarcodeScanner({ isOpen, onClose, onScanSuccess }: Barco
                                 <div className="max-w-md mx-auto bg-black/50 rounded-xl p-4 text-white text-center backdrop-blur-sm">
                                     <div className="flex items-center justify-center gap-3">
                                         <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/50"></div>
-                                        <span className="text-sm font-medium">Camera Ready - Scanning...</span>
+                                        <span className="text-sm font-medium">Scanning continuously...</span>
                                     </div>
                                 </div>
                             </div>
