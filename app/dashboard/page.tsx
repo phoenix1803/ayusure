@@ -47,7 +47,7 @@ export default function DashboardPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-brand">AyuSure Dashboard</h1>
-          <p className="text-gray-600 mt-1">Fetch authenticated sample data or upload a new entry for evaluation.</p>
+          <p className="text-gray-600 mt-1">Fetch authenticated sample data or upload a new entry for evaluation.(Click tha samples to view detailed analysis)</p>
         </div>
         <div className="flex gap-3">
           <button onClick={fetchData} className="btn btn-primary">
